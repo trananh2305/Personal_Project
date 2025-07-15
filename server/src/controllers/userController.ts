@@ -141,4 +141,41 @@ const newAccessToken = async (req: Request, res: Response) => {
   }
 };
 
-export { login, register, logout, newAccessToken };
+const resetPassword = async (
+  req: Request<
+    unknown,
+    unknown,
+    { id: string; newPassword: string; oldPassword: string }
+  >,
+  res: Response
+) => {
+  try {
+    const { id, newPassword, oldPassword } = req.body;
+    const user = await UserModel.findById(id);
+    if (!user) {
+       res.status(404).json({ message: "User not found" });
+       return;
+    }
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+    if (!isPasswordValid) {
+       res.status(400).json({ message: "Old password is incorrect" });
+       return;
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      id,
+      { password: hashedPassword },
+      { new: true }
+    );
+    if (updatedUser) {
+      res.status(200).json({ message: "Password reset successfully" });
+    } else {
+      res.status(400).json({ message: "Failed to reset password" });
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export { login, register, logout, newAccessToken, resetPassword };
