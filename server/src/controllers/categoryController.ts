@@ -6,8 +6,7 @@ import {
   getAllCategoriesService,
   updateCategoryService,
 } from "../services/categoryService";
-import CategoryModel from "../models/category/categoryModel";
-import { get } from "http";
+
 
 export const createCategory = async (
   req: Request<unknown, unknown, Category>,

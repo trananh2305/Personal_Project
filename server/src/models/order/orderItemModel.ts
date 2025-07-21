@@ -26,6 +26,11 @@ const orderItemModel = new mongoose.Schema(
       enum: ["PENDING", "COMPLETED", "PROCESSING", "SERVED"],
       default: "PENDING",
     },
+    chefId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+    },
   },
   { timestamps: true }
 );

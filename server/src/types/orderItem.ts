@@ -5,6 +5,7 @@ export interface OrderItem {
   quantity: number;
   status: "PENDING" | "COMPLETED" | "PROCESSING" | "SERVED";
   price: number;
+  chefId?: string;
   createdAt: Date;
   updatedAt: Date;
   __v: number;

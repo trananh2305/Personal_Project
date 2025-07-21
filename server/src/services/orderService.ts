@@ -4,6 +4,8 @@ import { Order } from "../types/order";
 import mongoose from "mongoose";
 import { getIo } from "../socket";
 import { updateTableStatusService } from "./tableService";
+import KitchenQueueModel from "../models/kitchenQueue/kitchenQueueModel";
+
 export const createOrderService = async (order: Order) => {
   const io = getIo();
   try {
@@ -17,7 +19,7 @@ export const createOrderService = async (order: Order) => {
     let finalOrder;
 
     if (existingOrder) {
-      await updateOrderStatusService(order, existingOrder);
+      await updateOrderService(order, existingOrder);
       finalOrder = await OrderModel.findById(existingOrder._id).populate({
         path: "items",
         // populate: {
@@ -62,7 +64,7 @@ export const createOrderService = async (order: Order) => {
         order.tableId,
         "OCCUPIED"
       );
-      io.emit("newOrder", updateTable);
+      io.emit("tableStatus", updateTable);
 
       finalOrder = await OrderModel.findById(newOrder._id).populate({
         path: "items",
@@ -84,7 +86,8 @@ export const createOrderService = async (order: Order) => {
   }
 };
 
-const updateOrderStatusService = async (order: Order, existingOrder: any) => {
+const updateOrderService = async (order: Order, existingOrder: any) => {
+  const io = getIo();
   try {
     const newOrderItemIds: mongoose.Types.ObjectId[] = [];
 
@@ -99,6 +102,7 @@ const updateOrderStatusService = async (order: Order, existingOrder: any) => {
         existingItem.quantity += newItem.quantity;
         existingItem.price += newItem.price;
         await existingItem.save();
+        io.emit("newKitchenQueue");
 
         existingOrder.totalPrice += newItem.price;
       } else {
@@ -110,6 +114,10 @@ const updateOrderStatusService = async (order: Order, existingOrder: any) => {
         });
 
         newOrderItemIds.push(created._id);
+        const kitchenEntry = await KitchenQueueModel.create({
+          orderItemId: created._id,
+        });
+        io.emit("newKitchenQueue", kitchenEntry);
         existingOrder.totalPrice += newItem.price;
       }
     }
@@ -127,5 +135,112 @@ const updateOrderStatusService = async (order: Order, existingOrder: any) => {
     // Populate sâu để trả về đầy đủ món ăn
   } catch (error: any) {
     throw new Error(`Error updating order status: ${error.message}`);
+  }
+};
+
+export const updateOrderStatusService = async (
+  orderId: string,
+  status: string
+) => {
+  const io = getIo();
+  try {
+    const updatedOrder = await OrderModel.findByIdAndUpdate(
+      orderId,
+      { status },
+      { new: true }
+    );
+
+    if (status === "CONFIRMED") {
+      const orderItems = await OrderItemModel.find({ orderId });
+      const kitchenEntries = orderItems.map((item) => ({
+        orderItemId: item._id,
+      }));
+      await KitchenQueueModel.insertMany(kitchenEntries);
+
+      io.emit("newKitchenQueue");
+    }
+    if (!updatedOrder) {
+      throw new Error("Order not found");
+    }
+    return updatedOrder;
+  } catch (error: any) {
+    throw new Error(`Error updating order status: ${error.message}`);
+  }
+};
+
+export const getOrderByIdService = async (orderId: string) => {
+  try {
+    const order = await OrderModel.findById(orderId).populate("items");
+    if (!order) {
+      throw new Error("Order not found");
+    }
+    return order;
+  } catch (error: any) {
+    throw new Error(`Error fetching order: ${error.message}`);
+  }
+};
+
+export const getAllOrdersService = async () => {
+  try {
+    const orders = await OrderModel.find().populate("items");
+    return orders;
+  } catch (error: any) {
+    throw new Error(`Error fetching all orders: ${error.message}`);
+  }
+};
+
+export const deleteOrderService = async (orderId: string) => {
+  try {
+    const deletedOrder = await OrderModel.findByIdAndDelete(orderId);
+    if (!deletedOrder) {
+      throw new Error("Order not found");
+    }
+    return deletedOrder;
+  } catch (error: any) {
+    throw new Error(`Error deleting order: ${error.message}`);
+  }
+};
+
+export const getOrdersByUserIdService = async (userId: string) => {
+  try {
+    const orders = await OrderModel.find({ userId }).populate("items");
+    if (!orders || orders.length === 0) {
+      throw new Error("No orders found for this user");
+    }
+    return orders;
+  } catch (error: any) {
+    throw new Error(`Error fetching orders for user: ${error.message}`);
+  }
+};
+
+export const getOrdersByTableIdService = async (tableId: string) => {
+  try {
+    const orders = await OrderModel.find({ tableId }).populate("items");
+    if (!orders || orders.length === 0) {
+      throw new Error("No orders found for this table");
+    }
+    return orders;
+  } catch (error: any) {
+    throw new Error(`Error fetching orders for table: ${error.message}`);
+  }
+};
+
+export const deleteOrderItemService = async (orderItemId: string) => {
+  const io = getIo();
+  try {
+    const item = await OrderItemModel.findOneAndDelete({
+      _id: orderItemId,
+      status: "PENDING",
+    });
+    if (!item) {
+      throw new Error(
+        "Order item not found or cannot be deleted (not PENDING)"
+      );
+    }
+    await KitchenQueueModel.findOneAndDelete({ orderItemId });
+    io.emit("newKitchenQueue");
+    return item;
+  } catch (error: any) {
+    throw new Error(`Error deleting order item: ${error.message}`);
   }
 };
